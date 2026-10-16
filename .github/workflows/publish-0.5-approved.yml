@@ -1,0 +1,63 @@
+name: Publicar MiniGame Studio 0.5.0 (autorizado)
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/publish-0.5-approved.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PACKAGE_URL: 'https://sdmntpreastus.oaiusercontent.com/files/00000000-2ccc-81f9-8d08-c319b6719812/raw?se=2026-10-16T07%3A32%3A33Z&sp=r&sv=2026-02-06&sr=b&scid=efcd44a6-f64d-5a45-892c-5b06425ce7fc&skoid=e96cf01c-9c0f-4e27-b41e-0f2e435e6532&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-16T03%3A06%3A59Z&ske=2026-10-17T03%3A06%3A59Z&sks=b&skv=2026-02-06&sig=bloIxNpwInM0mtjcryHX2v2bRuOOyR0LDiYB2sC/jJQ%3D'
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Descargar el artefacto autorizado
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --max-time 180 -o /tmp/mgs-0.5.0.zip "$PACKAGE_URL"
+          mkdir -p /tmp/mgs-release
+          unzip -j /tmp/mgs-0.5.0.zip 'MiniGameStudio-0.5.0-win-x64.exe' 'MiniGameStudio-0.5.0-win-x64.exe.blockmap' 'latest.yml' -d /tmp/mgs-release
+          echo '18bcf5254b29a0520e4dca2a5e4b4d65b19d0acdf162ecf0c8b7a434ec8f7ce8  /tmp/mgs-release/MiniGameStudio-0.5.0-win-x64.exe' | sha256sum --check
+          grep -Eq '^version: 0[.]5[.]0$' /tmp/mgs-release/latest.yml
+          test -s /tmp/mgs-release/MiniGameStudio-0.5.0-win-x64.exe.blockmap
+          test -s /tmp/mgs-release/latest.yml
+      - name: Crear publicación privada temporal y adjuntar los archivos
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view v0.5.0 -R 'Reydan2004/MiniGameStudio-Updates' >/dev/null 2>&1; then
+            echo 'La Release v0.5.0 ya existe; se detiene para evitar sobrescribirla.'
+            exit 1
+          fi
+          cat >/tmp/release-notes.md <<'EOF'
+          # MiniGame Studio 0.5.0 — Biblioteca completa
+
+          Esta actualización incorpora cuatro nuevos juegos y completa los diez minijuegos iniciales.
+
+          - **2048:** tablero 4×4 con cuatro flechas externas para mover las fichas con clics, sin arrastre.
+          - **Rompeladrillos:** mueve la paleta con el mouse, lanza con clic y supera tres niveles.
+          - **Tres en raya:** rival automático en tres dificultades.
+          - **Memoria:** tres tamaños de tablero para encontrar parejas.
+
+          También se mantiene el registro de partidas en SQLite, favoritos, preferencias, respaldos y actualizaciones automáticas.
+
+          **Windows x64.** La versión se validó con 150 pruebas automatizadas, análisis TypeScript, compilación de Windows y pruebas de jugabilidad.
+
+          Al actualizar desde 0.4.0, el programa debe crear un respaldo previo antes de iniciar la descarga. Conserva tus datos y comprueba el resultado en Diagnóstico.
+          EOF
+          gh release create v0.5.0 -R 'Reydan2004/MiniGameStudio-Updates' --target main --title 'MiniGame Studio 0.5.0' --notes-file /tmp/release-notes.md --draft \
+            /tmp/mgs-release/MiniGameStudio-0.5.0-win-x64.exe \
+            /tmp/mgs-release/MiniGameStudio-0.5.0-win-x64.exe.blockmap \
+            /tmp/mgs-release/latest.yml
+      - name: Publicar una vez cargados los tres archivos
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release edit v0.5.0 -R 'Reydan2004/MiniGameStudio-Updates' --draft=false --prerelease=false --latest
+          gh release view v0.5.0 -R 'Reydan2004/MiniGameStudio-Updates' --json tagName,isDraft,isPrerelease,assets
